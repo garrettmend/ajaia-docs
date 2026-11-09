@@ -2,7 +2,7 @@
 
 ## Links
 
-- **Live app:** `<LIVE_URL>`
+- **Live app:** https://ajaia-docs-production-c8ee.up.railway.app
 - **Walkthrough video:** `<VIDEO_URL>` (also in `VIDEO_URL.txt`)
 - **Source:** this folder (also at https://github.com/garrettmend/ajaia-docs, a private repo; access on request)
 

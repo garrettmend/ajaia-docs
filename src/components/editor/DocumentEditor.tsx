@@ -3,9 +3,9 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { EditorContent, useEditor, useEditorState } from "@tiptap/react";
+import { EditorContent, useEditor, type Editor } from "@tiptap/react";
 import StarterKit from "@tiptap/starter-kit";
-import { CharacterCount, Placeholder } from "@tiptap/extensions";
+import { Placeholder } from "@tiptap/extensions";
 import { AlertTriangle, ArrowLeft, Check, CloudOff, Eye, Loader2, Share2 } from "lucide-react";
 import { api, ApiError } from "@/lib/client";
 import { ROLE_LABEL } from "@/lib/access";
@@ -129,7 +129,6 @@ export function DocumentEditor({ doc, currentUser }: Props) {
         link: { openOnClick: !canEdit, autolink: true, defaultProtocol: "https" },
       }),
       Placeholder.configure({ placeholder: canEdit ? "Start writing…" : "" }),
-      CharacterCount,
     ],
     editorProps: {
       attributes: {
@@ -142,11 +141,6 @@ export function DocumentEditor({ doc, currentUser }: Props) {
       sync.current.content = e.getHTML();
       markDirty();
     },
-  });
-
-  const words = useEditorState({
-    editor,
-    selector: ({ editor: e }) => (e ? (e.storage.characterCount.words() as number) : 0),
   });
 
   // Ctrl/⌘+S saves now; warn before leaving with unsaved edits; save when the tab is hidden.
@@ -335,9 +329,7 @@ export function DocumentEditor({ doc, currentUser }: Props) {
               </div>
             )}
           </article>
-          <p className="mt-3 text-right text-xs text-muted">
-            {words} {words === 1 ? "word" : "words"}
-          </p>
+          {editor && <WordCount editor={editor} />}
         </div>
       </main>
 
@@ -351,6 +343,29 @@ export function DocumentEditor({ doc, currentUser }: Props) {
         />
       )}
     </div>
+  );
+}
+
+function countWords(editor: Editor) {
+  const { doc } = editor.state;
+  // Separate blocks with spaces so words in adjacent paragraphs don't merge.
+  return doc.textBetween(0, doc.content.size, " ", " ").split(/\s+/).filter(Boolean).length;
+}
+
+/** Mounted only once the editor exists, so the first count is the loaded document's. */
+function WordCount({ editor }: { editor: Editor }) {
+  const [words, setWords] = useState(() => countWords(editor));
+  useEffect(() => {
+    const update = () => setWords(countWords(editor));
+    editor.on("update", update);
+    return () => {
+      editor.off("update", update);
+    };
+  }, [editor]);
+  return (
+    <p className="mt-3 text-right text-xs text-muted">
+      {words} {words === 1 ? "word" : "words"}
+    </p>
   );
 }
 
