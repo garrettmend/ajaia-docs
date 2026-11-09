@@ -15,10 +15,11 @@ The brief rewards depth over breadth, so I picked the parts that make a document
 | --- | --- | --- |
 | App | **Next.js 16** (App Router, TypeScript) | One deployable unit for UI and API. Server components read data directly, and route handlers give a plain REST API for mutations. |
 | Editor | **TipTap 3** (ProseMirror) | Mature schema-based editor: formatting is structural, not ad-hoc `contenteditable` HTML. |
-| Storage | **SQLite via libSQL** | Zero-setup local file for development and tests, and the same SQL on hosted **Turso** (free) in production. One code path. |
-| Import | `marked` (.md), `mammoth` (.docx) | Pure JS, so it works in serverless functions. |
+| Storage | **SQLite via libSQL** | Zero-setup local file for development and tests, and a file on a persistent volume in production. The same client also talks to hosted libSQL (Turso), so the hosting choice never touches application code. |
+| Import | `marked` (.md), `mammoth` (.docx) | Pure JS: no native or system dependencies to install on the host. |
 | Validation | `zod` + `sanitize-html` | Input shape checks, plus an HTML allowlist on every write. |
 | Tests | **Vitest** against a real temporary SQLite database | Tests the actual SQL and constraints, not mocks. |
+| Hosting | **Railway**: one service plus a volume | One long-running Node process with a persistent disk. Nothing else to provision, and the review URL has no serverless cold starts. |
 
 Cache Components (on by default in the Next 16 scaffold) is turned off: every page is per-user, so there is no static shell worth prerendering, and the classic dynamic model keeps session reads simple.
 
@@ -54,7 +55,13 @@ Every service function in `src/lib/documents.ts` resolves the caller's role firs
 - The editor then stops autosaving and offers **Load latest version** or **Keep my version** (re-fetch the version, then re-save). Network or 5xx failures retry automatically. 4xx failures wait for the user.
 - Unsaved changes are flushed on Ctrl/⌘+S, when the tab is hidden, and before going back to the document list. Closing the tab with pending edits triggers the browser's "leave site?" warning.
 
-This is deliberately **not** real-time co-editing. CRDT sync (e.g. Yjs + a WebSocket server) is the right long-term answer, but it would have consumed the whole timebox and needs stateful infrastructure that free serverless hosting doesn't provide. Conflict detection gives the most important guarantee, no lost work, for a small fraction of the cost.
+This is deliberately **not** real-time co-editing. CRDT sync (e.g. Yjs + a WebSocket server) is the right long-term answer, but it would have consumed the whole timebox: a WebSocket service, CRDT document storage, and presence. Conflict detection gives the most important guarantee, no lost work, for a small fraction of the cost.
+
+## Deployment
+
+Railway runs `next start` as a single service, with the SQLite file on an attached volume. If no database is configured in production, the app refuses to start rather than writing to the container's ephemeral disk. A `/api/health` check gates each deploy on config and database reachability.
+
+**Trade-off:** a SQLite file means one instance, which is plenty for an internal tool at this stage. To scale out, point `DATABASE_URL` at hosted libSQL (Turso) and add replicas. That is a configuration change, not a code change.
 
 ## Auth (simulated, but not trivially forgeable)
 

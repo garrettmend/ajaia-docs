@@ -3,8 +3,9 @@ import type { Client } from "@libsql/client";
 /**
  * Storage: SQLite via libSQL.
  *  - Local dev / tests: a file (`file:local.db`) — zero setup.
- *  - Production: a hosted libSQL database (Turso free tier) over HTTP.
- * Same SQL dialect and client API in both, so there is one code path.
+ *  - Production on Railway: a file on a persistent volume.
+ *  - Or any hosted libSQL database (e.g. Turso) over HTTP, by setting DATABASE_URL.
+ * Same SQL dialect and client API everywhere, so there is one code path.
  */
 
 const SCHEMA = `
@@ -142,8 +143,8 @@ export async function openDatabase(
   options: { demoContent?: boolean } = {},
 ): Promise<Client> {
   const isLocal = url.startsWith("file:") || url === ":memory:";
-  // The HTTP-only build of the client has no native dependency, which keeps
-  // serverless deploys simple; the full build is only needed for local files.
+  // Remote databases use the HTTP-only build of the client (no native
+  // dependency); the full build with the SQLite engine is only needed for files.
   const { createClient } = isLocal
     ? await import("@libsql/client")
     : await import("@libsql/client/web");
@@ -154,19 +155,36 @@ export async function openDatabase(
   return client;
 }
 
+/**
+ * Where the database lives, in order of precedence:
+ *  1. DATABASE_URL (or TURSO_DATABASE_URL): any libSQL URL, e.g. file:/data/app.db or libsql://…
+ *  2. A Railway volume, if one is attached (Railway sets RAILWAY_VOLUME_MOUNT_PATH).
+ *  3. ./local.db in development. In production, refuse to guess: an ephemeral
+ *     container disk would silently lose every document on redeploy.
+ */
+export function resolveDatabaseUrl(env: NodeJS.ProcessEnv = process.env): string {
+  const explicit = env.DATABASE_URL ?? env.TURSO_DATABASE_URL;
+  if (explicit) return explicit;
+  if (env.RAILWAY_VOLUME_MOUNT_PATH) {
+    return `file:${env.RAILWAY_VOLUME_MOUNT_PATH.replace(/\/+$/, "")}/ajaia-docs.db`;
+  }
+  if (env.NODE_ENV === "production") {
+    throw new Error(
+      "No database configured. Attach a Railway volume or set DATABASE_URL. See README → Deployment.",
+    );
+  }
+  return "file:local.db";
+}
+
 const globalForDb = globalThis as unknown as { __ajaiaDb?: Promise<Client> };
 
 /** Process-wide database handle (survives dev hot reloads). */
 export function getDb(): Promise<Client> {
   if (!globalForDb.__ajaiaDb) {
-    const url = process.env.DATABASE_URL ?? process.env.TURSO_DATABASE_URL;
+    const url = resolveDatabaseUrl();
     const authToken = process.env.DATABASE_AUTH_TOKEN ?? process.env.TURSO_AUTH_TOKEN;
 
-    if (!url && process.env.NODE_ENV === "production") {
-      throw new Error("DATABASE_URL is not set. See README → Deployment.");
-    }
-
-    globalForDb.__ajaiaDb = openDatabase(url ?? "file:local.db", authToken).catch((err) => {
+    globalForDb.__ajaiaDb = openDatabase(url, authToken).catch((err) => {
       globalForDb.__ajaiaDb = undefined; // allow a retry on the next request
       throw err;
     });

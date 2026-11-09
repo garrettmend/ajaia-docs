@@ -31,11 +31,11 @@ Sign-in is simulated: pick an account on the sign-in page (no passwords). Switch
 - **File import:** `.txt`, `.md`/`.markdown` and `.docx` up to **2 MB** become a new document. Headings, lists, bold/italic/underline and links are kept. Images, tables, colors and fonts are not imported. Other file types are rejected with a clear message.
 - **Sharing:** every document has one owner, who can grant **Can edit** or **Can view** access by email, change roles, or revoke access. The home page separates **My documents** from **Shared with me** and shows each document's owner and your access level.
 - **Safe concurrent edits:** saves carry the document version. If someone else saved since you opened the document, your save is rejected (HTTP 409) and you choose **Load latest version** or **Keep my version**. Nobody's work is overwritten without them knowing.
-- **Persistence:** SQLite (libSQL). A local file in development, hosted [Turso](https://turso.tech) (free tier) in production.
+- **Persistence:** SQLite (libSQL). A local file in development and a file on a persistent Railway volume in production. A hosted libSQL database such as Turso also works, with no code changes.
 
 ## Run locally
 
-Requires **Node.js 20.9+** (developed on Node 22).
+Requires **Node.js 22** (20.9+ also works).
 
 ```bash
 npm install
@@ -53,22 +53,28 @@ npm run lint
 npm run build
 ```
 
-## Deployment (Vercel + Turso)
+## Deployment (Railway)
 
-The live app runs on Vercel's free tier with a free Turso database. No paid services are required.
+The live app runs as a single Railway service: one Node process (`next start`) with its SQLite database file on a persistent **Railway volume**. There is no external database to sign up for.
 
-1. **Database.** Create a database at [turso.tech](https://turso.tech) (or with the CLI: `turso db create ajaia-docs`). Copy its URL (`libsql://…`) and create an auth token (`turso db tokens create ajaia-docs`).
-2. **App.** Import the repository in Vercel (framework preset: Next.js) and set these environment variables:
+1. **Create the service.** In Railway: **New Project → Deploy from GitHub repo** → choose this repository. Railway detects Next.js and runs `npm ci` and `npm run build`. Start command, health check and restart policy come from [`railway.json`](railway.json).
+2. **Attach a volume.** In the service, open **Settings → Volumes** (or right-click the service → *Attach volume*) and set the mount path to `/data`. The app stores its database at `<mount path>/ajaia-docs.db` automatically, using the `RAILWAY_VOLUME_MOUNT_PATH` variable that Railway sets.
+3. **Set one variable.** In **Variables**, add `SESSION_SECRET` with a long random string, e.g. the output of `openssl rand -base64 32`.
+4. **Expose it.** In **Settings → Networking**, click **Generate Domain**.
 
-   | Variable | Value |
-   | --- | --- |
-   | `DATABASE_URL` | `libsql://<db>-<org>.turso.io` |
-   | `DATABASE_AUTH_TOKEN` | Turso token |
-   | `SESSION_SECRET` | a long random string, e.g. `openssl rand -base64 32` |
+On the first request the app creates the schema and seeds the demo accounts and documents. This is idempotent: it seeds once per database and never re-creates documents a reviewer deletes.
 
-3. Deploy. The schema and demo data are created automatically on the first request (idempotent and safe to run again).
+Operational notes:
 
-In production the app refuses to start without `DATABASE_URL` and `SESSION_SECRET`, so a misconfigured deploy fails loudly instead of quietly using an insecure default. `TURSO_DATABASE_URL` / `TURSO_AUTH_TOKEN` are also accepted.
+- **Health check:** `GET /api/health` returns 200 only when `SESSION_SECRET` is set and the database answers. A misconfigured deploy fails visibly instead of going live broken. In production the app also refuses to fall back to the container's own disk, which would lose every document on redeploy.
+- **One replica.** A SQLite file supports one writer process, so keep the service at one instance. Railway briefly stops the old deployment before starting a new one when a volume is attached, so expect a few seconds of downtime per deploy.
+- **Alternative database:** set `DATABASE_URL` (plus `DATABASE_AUTH_TOKEN`) to any hosted libSQL database, such as [Turso](https://turso.tech). This works on any host, including serverless ones, with no code changes. `TURSO_DATABASE_URL` / `TURSO_AUTH_TOKEN` are also accepted.
+
+| Variable | Required | Purpose |
+| --- | --- | --- |
+| `SESSION_SECRET` | yes (production) | Signs session cookies |
+| `DATABASE_URL` | no on Railway with a volume | Overrides the database location (`file:/path/app.db` or `libsql://…`) |
+| `DATABASE_AUTH_TOKEN` | only for hosted libSQL | Auth token for `DATABASE_URL` |
 
 ## Project structure
 
@@ -80,6 +86,7 @@ src/
     docs/[id]/                Editor page (server loads doc + role, client edits)
     api/
       session/                POST sign in, DELETE sign out
+      health/                 GET deploy health check (config + database)
       documents/              GET list, POST create
       documents/import/       POST multipart file → new document
       documents/[id]/         GET, PATCH (versioned save), DELETE
@@ -90,7 +97,7 @@ src/
   lib/
     access.ts                 Roles and capabilities (owner / editor / viewer)
     documents.ts              Document + sharing service; all access checks live here
-    db.ts                     libSQL client, schema, seed data
+    db.ts                     libSQL client, database location, schema, seed data
     session.ts                HMAC-signed session cookie
     importers.ts              .txt / .md / .docx → sanitized HTML
     sanitize.ts               HTML allowlist applied to every write

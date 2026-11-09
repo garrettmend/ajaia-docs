@@ -28,12 +28,12 @@
 Approaches I rejected outright:
 
 - **Real-time co-editing (Yjs/CRDT):** too large for the timebox and needs a stateful server. Replaced with versioned saves and explicit conflict resolution.
-- **SQLite file on a free host's disk:** free tiers have ephemeral disks, so documents would vanish on restart. Used hosted libSQL (Turso) instead, with the same SQL.
+- **SQLite on the container's own disk:** container disks are ephemeral, so documents would vanish on every redeploy. The database lives on a persistent Railway volume instead, and production refuses to start without one (or a `DATABASE_URL`).
 - **Storing ProseMirror JSON:** stricter, but import conversion would need a server-side DOM. Sanitized HTML matching the editor's schema was the pragmatic choice.
 
 ## How I verified correctness, UX and reliability
 
-- **Automated:** 15 Vitest tests against a real temporary SQLite database cover create/save/reopen with formatting, validation, HTML sanitization, the full permission matrix, 404-for-no-access, role changes and revocation, delete cascade, optimistic-concurrency conflicts, `.md`/`.txt`/`.docx` import plus rejected files, and session tamper detection.
+- **Automated:** 17 Vitest tests against a real temporary SQLite database cover create/save/reopen with formatting, validation, HTML sanitization, the full permission matrix, 404-for-no-access, role changes and revocation, delete cascade, optimistic-concurrency conflicts, `.md`/`.txt`/`.docx` import plus rejected files, session tamper detection, and database-location resolution.
 - **End-to-end in a browser:** created a document and formatted it with keyboard shortcuts and the toolbar, renamed it, reloaded to confirm persistence, shared it as viewer, switched users to confirm the read-only editor *and* a 403 from the API, forced a conflict and resolved it, and imported a Markdown file through the real upload input.
 - **Production mode:** ran `next build` + `next start` and checked with `curl`: unauthenticated 401, redirect to sign-in, forged cookie rejected, `Secure`/`HttpOnly` cookie flags, malformed JSON → 400, unsupported upload → 415.
 - **Static checks:** `tsc` and ESLint clean.

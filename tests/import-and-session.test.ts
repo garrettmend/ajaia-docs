@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import JSZip from "jszip";
 import { convertFileToDocument, IMPORT_MAX_BYTES } from "@/lib/importers";
 import { signSession, verifySession } from "@/lib/session";
+import { resolveDatabaseUrl } from "@/lib/db";
 import { expectAppError } from "./helpers";
 
 const bytes = (s: string) => new TextEncoder().encode(s);
@@ -60,6 +61,22 @@ describe("file import", () => {
     await expectAppError(convertFileToDocument("big.txt", new Uint8Array(IMPORT_MAX_BYTES + 1).fill(97)), 413);
     await expectAppError(convertFileToDocument("fake.docx", bytes("not a zip")), 422);
     await expectAppError(convertFileToDocument("bin.txt", new Uint8Array([0xff, 0xfe, 0xfd])), 422);
+  });
+});
+
+describe("database location", () => {
+  const prod = { NODE_ENV: "production" } as const;
+
+  it("prefers DATABASE_URL, then a Railway volume, then a local file in dev", () => {
+    expect(resolveDatabaseUrl({ ...prod, DATABASE_URL: "libsql://x.turso.io", RAILWAY_VOLUME_MOUNT_PATH: "/data" })).toBe(
+      "libsql://x.turso.io",
+    );
+    expect(resolveDatabaseUrl({ ...prod, RAILWAY_VOLUME_MOUNT_PATH: "/data/" })).toBe("file:/data/ajaia-docs.db");
+    expect(resolveDatabaseUrl({ NODE_ENV: "development" })).toBe("file:local.db");
+  });
+
+  it("refuses to fall back to the container disk in production", () => {
+    expect(() => resolveDatabaseUrl({ ...prod })).toThrow(/No database configured/);
   });
 });
 

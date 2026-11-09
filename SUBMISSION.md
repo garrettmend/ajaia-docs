@@ -43,9 +43,10 @@ Sample files for the import feature are in `samples/`.
 - Separate **My documents** and **Shared with me** lists, with owner and access badges
 - Server-enforced permissions (viewers get a read-only editor *and* 403s from the API; users without access get 404)
 - Conflict detection on concurrent saves, with a choice to load the latest version or keep your own
-- Persistence in SQLite (libSQL) locally and Turso in production
+- Persistence in SQLite (libSQL): a local file in development, a persistent Railway volume in production
 - Export to Markdown and HTML
-- 15 automated tests
+- 17 automated tests
+- Deploy health check (`/api/health`) gating Railway deploys on config and database reachability
 
 ### Intentionally out of scope
 
