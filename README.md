@@ -3,7 +3,7 @@
 A lightweight collaborative document editor: create and format documents, import files, and share them with other people as editors or viewers.
 
 **Live app:** https://ajaia-docs-production-c8ee.up.railway.app  
-**Walkthrough video:** see [`VIDEO_URL.txt`](VIDEO_URL.txt)
+**Walkthrough video:** https://youtu.be/Qe7ZP7iff0k
 
 ## Demo accounts
 

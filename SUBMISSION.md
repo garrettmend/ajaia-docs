@@ -3,7 +3,7 @@
 ## Links
 
 - **Live app:** https://ajaia-docs-production-c8ee.up.railway.app
-- **Walkthrough video:** `<VIDEO_URL>` (also in `VIDEO_URL.txt`)
+- **Walkthrough video:** https://youtu.be/Qe7ZP7iff0k (also in `VIDEO_URL.txt`)
 - **Source:** this folder (also at https://github.com/garrettmend/ajaia-docs, a private repo; access on request)
 
 ## Test accounts
